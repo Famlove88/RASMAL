@@ -355,11 +355,18 @@ details.how summary{cursor:pointer;font-weight:700;font-size:14.5px;color:var(--
 /* ════════════════════════════════════════════════════════════
    رأس مالي — متابعة الوضع المادي لمحلّين
    ════════════════════════════════════════════════════════════ */
-const APP_VERSION = 'v1.3 · 2026-10-07';
+const APP_VERSION = 'v1.4 · 2026-10-07';
 /* ═══ ربط Firebase ═══
-   الـ firebaseConfig تبع المشروع بينحط هون بدل null (متل باقي البرامج)، وبعدها الدخول بيصير بإيميل وكلمة سر.
-   طول ما هو null البرنامج بيشتغل على هالجهاز بس، بلا مزامنة. */
-const FIREBASE_CONFIG = null;
+   مشروع rasmal-1f2ef. الدخول بإيميل وكلمة سر (Authentication ← Email/Password)، والأرقام بـ Firestore تحت capital/{uid}/kashf.
+   (إذا انحط null بدل الـ config، البرنامج بيشتغل على هالجهاز بس، بلا مزامنة.) */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyAB9i4BshciBBlAeW9K8yqIOSPRVpCH4AM",
+  authDomain: "rasmal-1f2ef.firebaseapp.com",
+  projectId: "rasmal-1f2ef",
+  storageBucket: "rasmal-1f2ef.firebasestorage.app",
+  messagingSenderId: "908317005642",
+  appId: "1:908317005642:web:0fb78846142fcb690f93b3"
+};
 const CLOUD = !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId);
 const SHOPS = [{id:'dyaa', name:'محل الضيعة'}, {id:'dz', name:'محل ديرزنون'}];
 /* أقسام الكشف — هاللائحة هي المرجع الوحيد: منها بتطلع الخانات والحساب والرسوم وشاشة المراجعة.
@@ -1240,6 +1247,7 @@ function gateAccount(o){
         cloud.signIn(e1, p1).then(cred => { const u = (cred && cred.user) || firebase.auth().currentUser; o.done({uid:u.uid, email:u.email || e1}); },
           e => { goBtn.disabled = false; goBtn.textContent = 'دخول'; err.textContent = authMsg(e); }); };
       goBtn.onclick = run;
+      if(CLOUD) cloud.loadSdk().catch(() => {});                       // منبلّش نحمّل من هلق، ليكون الدخول أسرع
       [em, pw].forEach(x => x.addEventListener('keydown', e => { if(e.key !== 'Enter') return; e.preventDefault(); if(x === em && !pw.value) pw.focus(); else run(); }));
       if(window.matchMedia('(min-width:760px)').matches) setTimeout(() => { try{ (known ? pw : em).focus({preventScroll:true}); }catch(e){} }, 60);
     }});
@@ -1300,9 +1308,12 @@ const FB_VER = '10.12.2';
 const cloud = {
   state:'off', error:'', email:'', app:null, col:null, unsub:null, authUnsub:null, remoteM:{},
   set(st, err){ const ch = this.state !== st; this.state = st; this.error = err || ''; if(ch) softRender(); },
+  sdkP:null,
   loadSdk(){ if(window.firebase && firebase.firestore) return Promise.resolve();
-    const one = n => new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/firebase-' + n + '-compat.js'; s.onload = ok; s.onerror = () => no(new Error('ما قدرنا نتصل بالسيرفر')); document.head.appendChild(s); });
-    return one('app').then(() => one('auth')).then(() => one('firestore')); },
+    if(this.sdkP) return this.sdkP;                                   // تحميل واحد بس، مهما كان عدد يلي طالبينو
+    const one = n => new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'https://www.gstatic.com/firebasejs/' + FB_VER + '/firebase-' + n + '-compat.js'; s.onload = ok; s.onerror = () => { s.remove(); no(new Error('ما قدرنا نتصل بالسيرفر')); }; document.head.appendChild(s); });
+    this.sdkP = one('app').then(() => one('auth')).then(() => one('firestore')).catch(e => { this.sdkP = null; throw e; });
+    return this.sdkP; },
   start(){ if(!CLOUD) return this.set('off'); this.set('connecting');
     this.loadSdk().then(() => {
       if(!this.app) this.app = firebase.apps.length ? firebase.app() : firebase.initializeApp(getCfg());
@@ -1319,14 +1330,16 @@ const cloud = {
       if(changed) saveData();
       const was = this.state; this.state = 'on'; this.error = '';
       if(changed || was !== 'on') softRender();
-    }, e => { this.col = null; this.set('err', e.code === 'permission-denied' ? 'ما في صلاحية بقاعدة البيانات' : (e.message || e.code)); }); },
+    }, e => { this.col = null; this.set('err', syncErr(e)); }); },
   detach(){ if(this.unsub){ try{ this.unsub(); }catch(e){} } this.unsub = null; this.col = null; },
   push(r){ if(!this.col) return; const data = JSON.parse(JSON.stringify(r)); this.remoteM[r.id] = r._m;
-    this.col.doc(r.id).set(data).catch(e => { delete this.remoteM[r.id]; if(e.code === 'permission-denied') this.set('err', 'ما في صلاحية بقاعدة البيانات'); }); },
+    this.col.doc(r.id).set(data).catch(e => { delete this.remoteM[r.id]; if(e && (e.code === 'permission-denied' || e.code === 'not-found')) this.set('err', syncErr(e)); }); },
   signIn(em, pw){ return this.loadSdk().then(() => { if(!this.app) this.app = firebase.apps.length ? firebase.app() : firebase.initializeApp(getCfg()); return firebase.auth().signInWithEmailAndPassword(em, pw); }); },
   signOut(){ if(window.firebase && firebase.auth) firebase.auth().signOut(); },
   stop(out){ this.detach(); if(this.authUnsub){ this.authUnsub(); this.authUnsub = null; } if(out) this.signOut(); this.state = 'off'; }
 };
+function syncErr(e){ const c = (e && e.code) || '';
+  return ({'permission-denied':'ما في صلاحية بقاعدة البيانات', 'not-found':'قاعدة البيانات مش موجودة بالمشروع', 'failed-precondition':'قاعدة البيانات مش جاهزة بالمشروع', 'unavailable':'ما في اتصال بالسيرفر'})[c] || (e && e.message) || c || 'خطأ غير معروف'; }
 /* إعادة رسم بلا ما نخرّب استمارة مفتوحة أو نافذة */
 function softRender(){ const ae = document.activeElement;
   if(gate.locked){ pendingRender = true; return; }

@@ -3,7 +3,7 @@
    - الخطوط وملفات Firebase: من الكاش مع تحديث بالخلفية
    - بيمحي بس الكاش يلي اسمو بيبلّش بـ rasmali- (ما بيقرّب على باقي البرامج بنفس الموقع) */
 const PREFIX = 'rasmali-';
-const CACHE = PREFIX + 'pwa-v4';
+const CACHE = PREFIX + 'pwa-v5';
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-180.png'];
 const STATIC_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com', 'www.gstatic.com'];
 
